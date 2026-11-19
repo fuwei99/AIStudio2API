@@ -120,8 +120,10 @@ type Options struct {
 	AuthUser         int
 	CacheDirectory   string
 	ReadyTimeout     time.Duration
-	Log              io.Writer
-	StartupProgress  func(StartupStage)
+	// ProofServerURL 非空时 WAA proof 由该签名服务生成，不在本地创建 SpiderMonkey VM
+	ProofServerURL  string
+	Log             io.Writer
+	StartupProgress func(StartupStage)
 	// liveView 表示无头画面实时显示在管理页登录窗口，页面保持 Firefox 默认刷新帧率
 	liveView bool
 }

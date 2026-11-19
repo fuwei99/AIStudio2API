@@ -49,6 +49,7 @@ var configKeys = [...]string{
 	"MODEL_CHANNELS",
 	"MODEL_ACCOUNTS",
 	"WAA_BACKEND",
+	"PROOF_SERVER_URL",
 	"MEDIA_OUTPUT",
 	"MEDIA_BASE_URL",
 	"AUTO_START",
@@ -84,6 +85,9 @@ const WAABackendCamoufox = "camoufox"
 
 // WAABackendSpiderMonkey 表示由进程内的 SpiderMonkey 承担 WAA 生命周期
 const WAABackendSpiderMonkey = "spidermonkey"
+
+// WAABackendRemote 表示由 PROOF_SERVER_URL 指向的外部 !proof 签名服务承担 WAA proof 生成
+const WAABackendRemote = "remote"
 
 // WAAInterpreterCacheName 是账户状态目录中 SpiderMonkey 后端缓存 WAA 解释器的子目录名
 const WAAInterpreterCacheName = ".waa-interpreters"
@@ -151,8 +155,10 @@ type Config struct {
 	ModelChannels          string
 	ModelAccounts          string
 	WAABackend             string
-	MediaOutput            string
-	MediaBaseURL           string
+	// ProofServerURL 是 WAA_BACKEND=remote 时取 !proof 的签名服务地址
+	ProofServerURL string
+	MediaOutput    string
+	MediaBaseURL   string
 	// Invalid 是加载时取值无效、改用默认值的配置项
 	Invalid []InvalidValue
 	// Environment 是取自进程环境变量、覆盖 .env 的配置键
@@ -260,6 +266,7 @@ var configSetters = map[string]func(*Config, string) error{
 	"MODEL_ACCOUNTS":           textSetter(func(c *Config) *string { return &c.ModelAccounts }, strings.TrimSpace),
 	"API_KEY_ACCOUNTS":         textSetter(func(c *Config) *string { return &c.APIKeyAccounts }, strings.TrimSpace),
 	"WAA_BACKEND":              setWAABackend,
+	"PROOF_SERVER_URL":         textSetter(func(c *Config) *string { return &c.ProofServerURL }, strings.TrimSpace),
 	"MEDIA_OUTPUT":             textSetter(func(c *Config) *string { return &c.MediaOutput }, lowerTrim),
 	"MEDIA_BASE_URL":           textSetter(func(c *Config) *string { return &c.MediaBaseURL }, strings.TrimSpace),
 	"UPSTREAM_CHANNELS": func(c *Config, value string) error {
@@ -325,11 +332,15 @@ func setMaxAccountSwitches(c *Config, value string) error {
 	return nil
 }
 
-// setWAABackend 设置 WAA 后端，camoufox 以外的取值都使用 spidermonkey
+// setWAABackend 设置 WAA 后端：camoufox 与 remote 之外的取值都使用 spidermonkey
 func setWAABackend(c *Config, value string) error {
-	c.WAABackend = WAABackendSpiderMonkey
-	if lowerTrim(value) == WAABackendCamoufox {
+	switch lowerTrim(value) {
+	case WAABackendCamoufox:
 		c.WAABackend = WAABackendCamoufox
+	case WAABackendRemote:
+		c.WAABackend = WAABackendRemote
+	default:
+		c.WAABackend = WAABackendSpiderMonkey
 	}
 	return nil
 }
@@ -427,8 +438,11 @@ var configChecks = []configCheck{
 		return err
 	}},
 	{[]string{"WAA_BACKEND"}, func(c Config) error {
-		if c.WAABackend != WAABackendCamoufox && c.WAABackend != WAABackendSpiderMonkey {
-			return fmt.Errorf("WAA_BACKEND 必须是 camoufox 或 spidermonkey")
+		if c.WAABackend != WAABackendCamoufox && c.WAABackend != WAABackendSpiderMonkey && c.WAABackend != WAABackendRemote {
+			return fmt.Errorf("WAA_BACKEND 必须是 camoufox、spidermonkey 或 remote")
+		}
+		if c.WAABackend == WAABackendRemote && c.ProofServerURL == "" {
+			return fmt.Errorf("WAA_BACKEND=remote 时必须设置 PROOF_SERVER_URL")
 		}
 		return nil
 	}},
@@ -632,6 +646,7 @@ func (c Config) envValues() map[string]string {
 		"MODEL_ACCOUNTS":           c.ModelAccounts,
 		"API_KEY_ACCOUNTS":         c.APIKeyAccounts,
 		"WAA_BACKEND":              c.WAABackend,
+		"PROOF_SERVER_URL":         c.ProofServerURL,
 		"MEDIA_OUTPUT":             c.MediaOutput,
 		"MEDIA_BASE_URL":           c.MediaBaseURL,
 	}

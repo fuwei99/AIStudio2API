@@ -1323,6 +1323,9 @@ const (
 
 // proof 以当前 VM 生成 fresh WAA proof：input 为 proofRun 时先在页面上一次的对话不接到 contents 时点 New chat（空闲放不下时不做），再做 settings 中的各组运行设置操作，然后写入提示词后以可信鼠标点击 Run，为 proofSubmit 时在 submitted 轮对话最后一轮的函数调用块中粘贴函数结果并点击提交，ctx 带 pageRerunKey 且本页面点过 Run 时点击最后一轮的 Rerun，其余 ctx 带 userGestureKey 的请求先记录一次用户操作；VM 到期时等待后台重建完成，等待随 ctx 结束
 func (runtime *goWAARuntime) proof(ctx context.Context, digest string, prompt string, input proofInput, submitted int, settings [][]waa.SettingStep, contents []json.RawMessage) (string, error) {
+	if runtime.options.ProofServerURL != "" {
+		return runtime.remoteProof(ctx, prompt)
+	}
 	lockStarted := time.Now()
 	runtime.vmMu.Lock()
 	defer runtime.vmMu.Unlock()
@@ -1395,6 +1398,69 @@ func (runtime *goWAARuntime) proof(ctx context.Context, digest string, prompt st
 		return "", errors.New("fresh WAA proof 前缀无效")
 	}
 	return proof, nil
+}
+
+// remoteProof 通过 PROOF_SERVER_URL 指向的 !proof 签名服务生成 fresh WAA proof，
+// 本地不创建 SpiderMonkey VM；Cookie 只随本次请求发出，不在本地持久化到该服务
+func (runtime *goWAARuntime) remoteProof(ctx context.Context, prompt string) (string, error) {
+	startedAt := time.Now()
+	payload, err := json.Marshal(map[string]any{
+		"cookies":  runtime.googleCookieHeader(),
+		"authUser": runtime.options.AuthUser,
+		"model":    "models/" + strings.TrimPrefix(runtime.options.Model, "models/"),
+		"prompt":   prompt,
+	})
+	if err != nil {
+		return "", fmt.Errorf("编码 !proof 请求: %w", err)
+	}
+	endpoint := strings.TrimRight(runtime.options.ProofServerURL, "/") + "/v1/proof/mint"
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("构造 !proof 请求: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := runtime.client.Do(request)
+	if err != nil {
+		return "", fmt.Errorf("请求 !proof 签名服务: %w", err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("读取 !proof 签名服务响应: %w", err)
+	}
+	var result struct {
+		OK    bool   `json:"ok"`
+		Proof string `json:"proof"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("解析 !proof 签名服务响应（HTTP %d）: %w", response.StatusCode, err)
+	}
+	if !result.OK || result.Proof == "" {
+		return "", fmt.Errorf("!proof 签名服务返回失败（HTTP %d）: %s", response.StatusCode, result.Error)
+	}
+	if !strings.HasPrefix(result.Proof, "!") {
+		return "", errors.New("fresh WAA proof 前缀无效")
+	}
+	prooftime.Observe(ctx, prooftime.Compute, time.Since(startedAt))
+	return result.Proof, nil
+}
+
+// googleCookieHeader 返回发往 !proof 签名服务的 Google Cookie 请求头
+func (runtime *goWAARuntime) googleCookieHeader() string {
+	state := runtime.cookies()
+	parts := make([]string, 0, len(state.Cookies))
+	for _, cookie := range state.Cookies {
+		domain := strings.TrimPrefix(strings.ToLower(cookie.Domain), ".")
+		if domain != "google.com" && !strings.HasSuffix(domain, ".google.com") {
+			continue
+		}
+		if cookie.Name == "" {
+			continue
+		}
+		parts = append(parts, cookie.Name+"="+cookie.Value)
+	}
+	return strings.Join(parts, "; ")
 }
 
 // newChatRoute 是官网点确认框的 Discard and continue 到页面渲染新对话页、提示词输入框取得焦点的间隔
