@@ -12,10 +12,18 @@ import (
 // camoufoxWorkerPath 是 Camoufox 后端 Worker 选项中的可执行文件路径，Worker 启动时换成已就绪的 Camoufox
 const camoufoxWorkerPath = "camoufox"
 
+// proofServerURL 是 WAA_BACKEND=remote 时使用的 !proof 签名服务地址，启动时由 prepareWAABackend 写入
+var proofServerURL string
+
 // prepareWAABackend 按 WAA 后端返回 Worker 选项中的 Camoufox 路径与账户登录驱动，Camoufox 后端在后台准备 Camoufox
 func prepareWAABackend(cfg config.Config, requests *requestRegistry, accounts []*aistudio.Account, proxy string) (string, aistudio.IsolatedLoginDriver) {
 	removeStaleCamoufoxProfiles(requests)
 	login := camoufoxLoginDriver{proxy: proxy}
+	if cfg.WAABackend == config.WAABackendRemote {
+		proofServerURL = cfg.ProofServerURL
+		requests.logStage("service", "INFO", api.LogStage{Name: "运行时装配", Step: 2, Steps: 3}, "使用远程 !proof 签名服务", "url", proofServerURL)
+		return "", login
+	}
 	if cfg.WAABackend == config.WAABackendSpiderMonkey {
 		requests.logStage("service", "INFO", api.LogStage{Name: "运行时装配", Step: 2, Steps: 3}, "使用 SpiderMonkey WAA 后端", "accounts", len(accounts))
 		for _, account := range accounts {
@@ -41,6 +49,9 @@ func removeStaleCamoufoxProfiles(requests *requestRegistry) {
 
 // newWAAWorker 启动账户的 Camoufox 或 SpiderMonkey Worker，Camoufox 尚未就绪时返回正在准备的进度或准备失败的原因
 func newWAAWorker(ctx context.Context, accountID string, options camoufoxnative.Options) (*aistudio.NativeWorker, error) {
+	if proofServerURL != "" {
+		options.ProofServerURL = proofServerURL
+	}
 	if options.ExecutablePath == "" {
 		return aistudio.NewSpiderMonkeyWorker(ctx, accountID, options)
 	}

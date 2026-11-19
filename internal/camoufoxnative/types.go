@@ -121,6 +121,8 @@ type Options struct {
 	AuthUser         int
 	CacheDirectory   string
 	ReadyTimeout     time.Duration
+	// ProofServerURL 非空时 WAA proof 由该签名服务生成，不在本地创建 SpiderMonkey VM
+	ProofServerURL   string
 	Log              io.Writer
 	StartupProgress  func(StartupStage)
 	// RefreshCookies 在重建 WAA VM 前刷新即将到期的 DBSC 绑定 Cookie，为空时跳过
