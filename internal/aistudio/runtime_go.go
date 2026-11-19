@@ -38,6 +38,11 @@ const (
 	makerSuiteRPCURL       = "https://alkalimakersuite-pa.clients6.google.com/$rpc/google.internal.alkali.applications.makersuite.v1.MakerSuiteService/"
 	loggingContextURL      = makerSuiteRPCURL + "GetLoggingContext"
 	firefoxInnerHeightDiff = 85
+	// remoteProofUserAgent 是 remote 后端下发往 GenerateContent 的 User-Agent，
+	// 必须与 !proof 签名服务生成 proof 时的页面 UA 一致
+	remoteProofUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+	// remoteProofExtension 是 relay 发往 GenerateContent 的客户端信息扩展头固定值
+	remoteProofExtension = "CAASAUIwATgEQABQBFgDYgJKUHAAeAGQAQCYAQE="
 )
 
 // workerRuntime 是 Camoufox 页面与 SpiderMonkey VM 两种 WAA 后端共同提供的 Worker 能力
@@ -1324,7 +1329,7 @@ const (
 // proof 以当前 VM 生成 fresh WAA proof：input 为 proofRun 时先在页面上一次的对话不接到 contents 时点 New chat（空闲放不下时不做），再做 settings 中的各组运行设置操作，然后写入提示词后以可信鼠标点击 Run，为 proofSubmit 时在 submitted 轮对话最后一轮的函数调用块中粘贴函数结果并点击提交，ctx 带 pageRerunKey 且本页面点过 Run 时点击最后一轮的 Rerun，其余 ctx 带 userGestureKey 的请求先记录一次用户操作；VM 到期时等待后台重建完成，等待随 ctx 结束
 func (runtime *goWAARuntime) proof(ctx context.Context, digest string, prompt string, input proofInput, submitted int, settings [][]waa.SettingStep, contents []json.RawMessage) (string, error) {
 	if runtime.options.ProofServerURL != "" {
-		return runtime.remoteProof(ctx, prompt)
+		return runtime.remoteProof(ctx, prompt, contents)
 	}
 	lockStarted := time.Now()
 	runtime.vmMu.Lock()
@@ -1402,14 +1407,21 @@ func (runtime *goWAARuntime) proof(ctx context.Context, digest string, prompt st
 
 // remoteProof 通过 PROOF_SERVER_URL 指向的 !proof 签名服务生成 fresh WAA proof，
 // 本地不创建 SpiderMonkey VM；Cookie 只随本次请求发出，不在本地持久化到该服务
-func (runtime *goWAARuntime) remoteProof(ctx context.Context, prompt string) (string, error) {
+func (runtime *goWAARuntime) remoteProof(ctx context.Context, prompt string, contents []json.RawMessage) (string, error) {
 	startedAt := time.Now()
-	payload, err := json.Marshal(map[string]any{
+	requestBody := map[string]any{
 		"cookies":  runtime.googleCookieHeader(),
 		"authUser": runtime.options.AuthUser,
 		"model":    "models/" + strings.TrimPrefix(runtime.options.Model, "models/"),
-		"prompt":   prompt,
-	})
+	}
+	// wireContents 是已编码的 wire 数组，签名服务据此计算与真实请求一致的 digest；
+	// 没有 wire 内容时退回 prompt，服务端按提示词文本摘要
+	if len(contents) > 0 {
+		requestBody["wireContents"] = contents
+	} else {
+		requestBody["prompt"] = prompt
+	}
+	payload, err := json.Marshal(requestBody)
 	if err != nil {
 		return "", fmt.Errorf("编码 !proof 请求: %w", err)
 	}
@@ -1496,6 +1508,12 @@ func (runtime *goWAARuntime) ProtocolHeaders(ctx context.Context) (http.Header, 
 func (runtime *goWAARuntime) SendProtected(ctx context.Context, rawURL string, headers http.Header, protected protectedBody) (*camoufoxnative.ProtectedResponse, error) {
 	body := protected.data
 	request := headers.Clone()
+	// remote 后端的 proof 由签名服务在其页面环境里生成，发往上游的 User-Agent 与
+	// X-Goog-Ext-519733851-Bin 必须与 relay 保持一致，否则 proof 校验不过
+	if runtime.options.ProofServerURL != "" {
+		request.Set("User-Agent", remoteProofUserAgent)
+		request.Set("X-Goog-Ext-519733851-Bin", remoteProofExtension)
+	}
 	request.Set("Accept", "*/*")
 	request.Set("Referer", aiStudioOrigin+"/")
 	request.Set("Origin", aiStudioOrigin)
