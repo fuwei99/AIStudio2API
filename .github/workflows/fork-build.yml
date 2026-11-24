@@ -1,0 +1,62 @@
+name: Fork Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  build-linux-amd64:
+    runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.18.0'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build Frontend
+        working-directory: web
+        run: |
+          npm ci
+          npx vp build
+      - uses: actions/setup-go@v7
+        id: go
+        with:
+          go-version: stable
+          cache: false
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - uses: ./.github/actions/static-libraries
+        with:
+          target: linux-amd64
+      - name: Build
+        shell: bash
+        env:
+          GOARCH: amd64
+          CC: zig cc -target x86_64-linux-musl
+          CXX: zig c++ -target x86_64-linux-musl
+        run: |
+          GOOS=linux go build -mod=readonly -trimpath -tags netgo,osusergo -ldflags="-s -w -linkmode external -extldflags '-static -Wl,--strip-all -Wl,--gc-sections'" -o bin/aistudio2api ./cmd/aistudio2api
+      - name: Verify binary
+        run: |
+          ls -la bin/aistudio2api
+          file bin/aistudio2api || true
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aistudio2api-linux-amd64
+          path: bin/aistudio2api
+          retention-days: 7
