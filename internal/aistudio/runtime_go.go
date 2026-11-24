@@ -310,8 +310,12 @@ func pageGlobals(body []byte) map[string]any {
 }
 
 // newGoWAAHTTPClient 创建由 runtime 手动处理重定向的固定出口客户端
-func newGoWAAHTTPClient(proxyURL string) (*http.Client, error) {
-	client, err := NewProxyHTTPClient(proxyURL)
+// proofServerHTTPClient 用于访问 !proof 签名服务。签名服务可能是明文 http（本地自启），
+// 而运行时主客户端为 Google 强制了 HTTP/2，明文 http 会报 http2: unsupported scheme，
+// 因此这里单独用一个不带代理、不带 HTTP/2 强制要求的客户端。
+var proofServerHTTPClient = &http.Client{Timeout: 2 * time.Minute}
+
+func newGoWAAHTTPClient(proxyURL string) (*http.Client, error) {	client, err := NewProxyHTTPClient(proxyURL)
 	if err != nil {
 		return nil, err
 	}
@@ -1520,7 +1524,7 @@ func (runtime *goWAARuntime) remoteProof(ctx context.Context, prompt string, con
 		return "", fmt.Errorf("构造 !proof 请求: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
-	response, err := runtime.client.Do(request)
+	response, err := proofServerHTTPClient.Do(request)
 	if err != nil {
 		return "", fmt.Errorf("请求 !proof 签名服务: %w", err)
 	}
