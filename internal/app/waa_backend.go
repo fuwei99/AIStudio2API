@@ -7,6 +7,7 @@ import (
 	"github.com/Mag1cFall/AIStudio2API/internal/api"
 	"github.com/Mag1cFall/AIStudio2API/internal/camoufoxnative"
 	"github.com/Mag1cFall/AIStudio2API/internal/config"
+	"github.com/Mag1cFall/AIStudio2API/internal/waaproof"
 )
 
 // camoufoxWorkerPath 是 Camoufox 后端 Worker 选项中的可执行文件路径，Worker 启动时换成已就绪的 Camoufox
@@ -21,6 +22,14 @@ func prepareWAABackend(cfg config.Config, requests *requestRegistry, accounts []
 	login := camoufoxLoginDriver{proxy: proxy}
 	if cfg.WAABackend == config.WAABackendRemote {
 		proofServerURL = cfg.ProofServerURL
+		if proofServerURL == "" {
+			if url, err := waaproof.Ensure(context.Background()); err != nil {
+				requests.log("service", "WARN", "内置签名服务启动失败", "error", err)
+			} else {
+				proofServerURL = url
+				requests.logStage("service", "INFO", api.LogStage{Name: "运行时装配", Step: 2, Steps: 3}, "已启动内置 !proof 签名服务", "url", proofServerURL)
+			}
+		}
 		requests.logStage("service", "INFO", api.LogStage{Name: "运行时装配", Step: 2, Steps: 3}, "使用远程 !proof 签名服务", "url", proofServerURL)
 		return "", login
 	}

@@ -1,0 +1,15 @@
+{
+  "name": "waa-proof-server",
+  "version": "1.0.0",
+  "description": "Pure Node.js (node:vm) WAA !proof minting server with a 1h hot-only in-memory VM pool",
+  "main": "src/proof-server.js",
+  "bin": {
+    "waa-proof-server": "bin/start-proof-server.js"
+  },
+  "scripts": {
+    "start": "node bin/start-proof-server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

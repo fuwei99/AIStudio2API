@@ -1,0 +1,21 @@
+{
+  "request": {
+    "endpoint": "POST http://127.0.0.1:18801/v1/proof/mint",
+    "body": {
+      "cookies": "SID=YOUR_SID; HSID=YOUR_HSID; SSID=YOUR_SSID; APISID=YOUR_APISID; SAPISID=YOUR_SAPISID; __Secure-1PSID=YOUR_1PSID; __Secure-3PSID=YOUR_3PSID; __Secure-1PAPISID=YOUR_1PAPISID; __Secure-3PAPISID=YOUR_3PAPISID; __Secure-1PSIDTS=YOUR_1PSIDTS; __Secure-3PSIDTS=YOUR_3PSIDTS; SIDCC=YOUR_SIDCC; __Secure-1PSIDCC=YOUR_1PSIDCC; __Secure-3PSIDCC=YOUR_3PSIDCC; NID=YOUR_NID",
+      "authUser": 0,
+      "model": "models/gemini-4-argon",
+      "messages": [
+        {
+          "role": "user",
+          "content": "你好"
+        }
+      ]
+    }
+  },
+  "response": {
+    "ok": true,
+    "proof": "!EXAMPLE_PROOF_TOKEN_MINTED_BY_NODE_VM...",
+    "poolState": "hot"
+  }
+}

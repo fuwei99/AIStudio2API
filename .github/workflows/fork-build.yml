@@ -58,5 +58,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: aistudio2api-linux-amd64
-          path: bin/aistudio2api
+          path: |
+            bin/aistudio2api
+            proof-server/**
           retention-days: 7

@@ -1,0 +1,22 @@
+{
+  "name": "waa-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Node runtime for Google WAA / AI Studio MakerSuite: Waa/Create, botguard program host, auth, GenerateContent, OpenAI-compatible server and catiecli WS executor (the VM proof algorithm is the one excluded piece)",
+  "main": "src/index.js",
+  "bin": {
+    "waa": "bin/waa.js"
+  },
+  "scripts": {
+    "test": "node test/run-all.js",
+    "test:slow": "node test/run-all.js --slow",
+    "doctor": "node bin/waa.js doctor",
+    "waa": "node bin/waa.js waa",
+    "serve": "node bin/waa.js serve",
+    "mint": "node bin/mint-server.js",
+    "ws": "node bin/waa.js ws"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
