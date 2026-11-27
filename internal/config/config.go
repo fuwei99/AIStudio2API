@@ -292,7 +292,14 @@ var configSetters = map[string]func(*Config, string) error{
 	"MODEL_ACCOUNTS":           textSetter(func(c *Config) *string { return &c.ModelAccounts }, strings.TrimSpace),
 	"API_KEY_ACCOUNTS":         textSetter(func(c *Config) *string { return &c.APIKeyAccounts }, strings.TrimSpace),
 	"WAA_BACKEND":              setWAABackend,
-	"PROOF_SERVER_URL":         textSetter(func(c *Config) *string { return &c.ProofServerURL }, strings.TrimSpace),
+	"PROOF_SERVER_URL": textSetter(func(c *Config) *string { return &c.ProofServerURL }, func(value string) string {
+		value = strings.TrimSpace(value)
+		// local 是显式哨兵值，等价于空值：使用随程序分发的内置签名服务
+		if strings.EqualFold(value, "local") {
+			return ""
+		}
+		return value
+	}),
 	"MEDIA_OUTPUT":             textSetter(func(c *Config) *string { return &c.MediaOutput }, lowerTrim),
 	"MEDIA_BASE_URL":           textSetter(func(c *Config) *string { return &c.MediaBaseURL }, strings.TrimSpace),
 	"UPSTREAM_CHANNELS": func(c *Config, value string) error {
@@ -466,9 +473,6 @@ var configChecks = []configCheck{
 	{[]string{"WAA_BACKEND"}, func(c Config) error {
 		if c.WAABackend != WAABackendCamoufox && c.WAABackend != WAABackendSpiderMonkey && c.WAABackend != WAABackendRemote {
 			return fmt.Errorf("WAA_BACKEND 必须是 camoufox、spidermonkey 或 remote")
-		}
-		if c.WAABackend == WAABackendRemote && c.ProofServerURL == "" {
-			return fmt.Errorf("WAA_BACKEND=remote 时必须设置 PROOF_SERVER_URL")
 		}
 		return nil
 	}},
